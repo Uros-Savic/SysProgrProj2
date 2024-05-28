@@ -13,24 +13,6 @@ namespace MultiThreadedWebServer
         private static Image<Rgba32> gif;
         private static Image<Rgba32> image;
 
-        public static void EditImage(Image<Rgba32> image, byte red, byte green, byte blue)
-        {
-            for (int y = 0; y < image.Height; y++)
-            {
-                for (int x = 0; x < image.Width; x++)
-                {
-                    Rgba32 pixel = image[x, y];
-                    if (red != 0)
-                        pixel.R = red;
-                    if (green != 0)
-                        pixel.G = green;
-                    if (blue != 0)
-                        pixel.B = blue;
-                    image[x, y] = pixel;
-                }
-            }
-        }
-
         public static string Conv(string imagePath, int index)
         {
             image = Image.Load<Rgba32>(imagePath);
