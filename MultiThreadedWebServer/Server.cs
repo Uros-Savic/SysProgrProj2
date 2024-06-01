@@ -7,6 +7,7 @@ using System.Net;
 using System.Text;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace MultiThreadedWebServer
 {
@@ -14,10 +15,10 @@ namespace MultiThreadedWebServer
     {
         static readonly string RootFolder = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..");
         static readonly Dictionary<string, byte[]> ResponseCache = new();
-        static readonly object CacheLock = new();
+        static readonly SemaphoreSlim CacheSemaphore = new(1, 1);
         static int index = 0;
 
-        public static void StartWebServer(HttpListener listener)
+        public static async Task StartWebServerAsync(HttpListener listener)
         {
             listener.Prefixes.Add("http://localhost:5050/");
             listener.Start();
@@ -25,15 +26,15 @@ namespace MultiThreadedWebServer
 
             while (true)
             {
-                HttpListenerContext context = listener.GetContext();
-                HandleRequest(context);
+                HttpListenerContext context = await listener.GetContextAsync();
+                _ = Task.Run(() => HandleRequestAsync(context));
             }
         }
 
-        static void HandleRequest(HttpListenerContext context)
+        static async Task HandleRequestAsync(HttpListenerContext context)
         {
             HttpListenerRequest request = context.Request;
-            HttpListenerResponse response = context.Response; 
+            HttpListenerResponse response = context.Response;
 
             if (request.Url != null)
             {
@@ -45,7 +46,8 @@ namespace MultiThreadedWebServer
                 if (File.Exists(filePath))
                 {
                     byte[] cachedResponse;
-                    lock (CacheLock)
+                    await CacheSemaphore.WaitAsync();
+                    try
                     {
                         if (ResponseCache.ContainsKey(requestUrl))
                         {
@@ -53,24 +55,34 @@ namespace MultiThreadedWebServer
                             Console.WriteLine("Cached response found.");
                             Console.WriteLine($"Request processed in {stopwatch.ElapsedMilliseconds} milliseconds.");
 
-                            response.OutputStream.Write(cachedResponse, 0, cachedResponse.Length);
+                            await response.OutputStream.WriteAsync(cachedResponse);
                             response.Close();
                             return;
                         }
                     }
+                    finally
+                    {
+                        CacheSemaphore.Release();
+                    }
+
                     if (FindFileType(filePath))
                     {
                         try
                         {
-                            String a = LogicTask.Conv(filePath, ++index).ToString();
-                            byte[] fileBytes = File.ReadAllBytes(a);
-                            lock (CacheLock)
+                            String a = (await LogicTask.ConvAsync(filePath, ++index)).ToString();
+                            byte[] fileBytes = await File.ReadAllBytesAsync(a);
+                            await CacheSemaphore.WaitAsync();
+                            try
                             {
                                 ResponseCache[requestUrl] = fileBytes;
                             }
+                            finally
+                            {
+                                CacheSemaphore.Release();
+                            }
                             response.ContentType = "image/gif";
                             response.ContentLength64 = fileBytes.Length;
-                            response.OutputStream.Write(fileBytes, 0, fileBytes.Length);
+                            await response.OutputStream.WriteAsync(fileBytes);
                             Console.WriteLine("A .gif file has been created.");
                         }
                         catch (Exception ex)
@@ -81,10 +93,10 @@ namespace MultiThreadedWebServer
                     else
                     {
                         response.StatusCode = (int)HttpStatusCode.NotFound;
-                        string errorMessage = $"File not compatible";
+                        string errorMessage = "File not compatible";
                         byte[] errorBytes = Encoding.UTF8.GetBytes(errorMessage);
-                        response.OutputStream.Write(errorBytes, 0, errorBytes.Length);
-                        Console.WriteLine($"File type not compatible.");
+                        await response.OutputStream.WriteAsync(errorBytes);
+                        Console.WriteLine("File type not compatible.");
                     }
                 }
                 else
@@ -92,19 +104,18 @@ namespace MultiThreadedWebServer
                     response.StatusCode = (int)HttpStatusCode.NotFound;
                     string errorMessage = $"File not found: {requestUrl}";
                     byte[] errorBytes = Encoding.UTF8.GetBytes(errorMessage);
-                    response.OutputStream.Write(errorBytes, 0, errorBytes.Length);
+                    await response.OutputStream.WriteAsync(errorBytes);
                     Console.WriteLine($"File not found: {requestUrl}");
                 }
                 response.Close();
                 stopwatch.Stop();
                 Console.WriteLine($"Request processed in {stopwatch.ElapsedMilliseconds} milliseconds.");
             }
-			else
-			{
+            else
+            {
                 response.StatusCode = (int)HttpStatusCode.BadRequest;
                 response.Close();
                 Console.WriteLine("Request is null.");
-
             }
         }
 
@@ -112,21 +123,19 @@ namespace MultiThreadedWebServer
         {
             string extension = Path.GetExtension(filePath)?.ToLower();
 
-            List<string> Extensions = new List<string> { ".gif", ".qoi", ".png", ".pbm", ".webp", ".tga", ".jpeg", ".jpg", ".tiff", ".bmp" };
+            List<string> Extensions = new() { ".gif", ".qoi", ".png", ".pbm", ".webp", ".tga", ".jpeg", ".jpg", ".tiff", ".bmp" };
 
             return Extensions.Contains(extension);
         }
 
-        public static void StopWebServer(HttpListener listener)
+        public static async Task StopWebServerAsync(HttpListener listener)
         {
             if (listener != null && listener.IsListening)
             {
                 listener.Stop();
-                listener.Close();
+                await Task.Run(() => listener.Close());
                 Console.WriteLine("Web server stopped.");
             }
         }
-
-
     }
 }

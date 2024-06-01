@@ -9,22 +9,20 @@ namespace MultiThreadedWebServer
 {
     internal class LogicTask
     {
-        private static readonly object _lock = new object();
-        private static Image<Rgba32> gif;
-        private static Image<Rgba32> image;
+        private static readonly SemaphoreSlim _lock = new(1, 1);
 
-        public static string Conv(string imagePath, int index)
+        public static async Task<string> ConvAsync(string imagePath, int index)
         {
-            image = Image.Load<Rgba32>(imagePath);
-            gif = new Image<Rgba32>(image.Width, image.Height);
+            var image = Image.Load<Rgba32>(imagePath);
+            var gif = new Image<Rgba32>(image.Width, image.Height);
 
             Task[] taskArray = new Task[10];
             for (int i = 0; i < taskArray.Length; i++)
             {
                 int localIndex = i;
-                taskArray[localIndex] = Task.Factory.StartNew(() => ProcessImage(image.CloneAs<Rgba32>(), localIndex));
+                taskArray[localIndex] = ProcessImageAsync(image.CloneAs<Rgba32>(), localIndex, gif);
             }
-            Task.WaitAll(taskArray);
+            await Task.WhenAll(taskArray);
 
             gif.Frames.RemoveFrame(0);
 
@@ -36,19 +34,34 @@ namespace MultiThreadedWebServer
                 var frameMetadata = frame.Metadata.GetGifMetadata();
                 frameMetadata.FrameDelay = 30;
             }
+
             string outputPath = $"../../../output{index}.gif";
-            gif.Save(outputPath, new GifEncoder());
+            await Task.Run(() => gif.Save(outputPath, new GifEncoder()));
             return outputPath;
         }
 
-        private static void ProcessImage(Image<Rgba32> tempImage, int i)
-        {
-            tempImage.Mutate(x => x.Hue(70 + i * 20));
 
-            lock (_lock)
+
+        private static async Task ProcessImageAsync(Image<Rgba32> tempImage, int i, Image<Rgba32> gif)
+        {
+            await Task.Run(() =>
             {
-                gif.Frames.AddFrame(tempImage.Frames.RootFrame);
+                tempImage.Mutate(x => x.Hue(70 + i * 20));
+            });
+
+            await _lock.WaitAsync();
+            try
+            {
+                if (gif != null) 
+                {
+                    gif.Frames.AddFrame(tempImage.Frames.RootFrame);
+                }
+            }
+            finally
+            {
+                _lock.Release();
             }
         }
+
     }
 }

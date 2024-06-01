@@ -17,7 +17,7 @@ namespace MultiThreadedWebServer
             try
             {
                 listener = new HttpListener();
-                Server.StartWebServer(listener);
+				await Server.StartWebServerAsync(listener);
                 Console.WriteLine("Web server started.");
                 await Task.Delay(-1);
             }
@@ -27,7 +27,7 @@ namespace MultiThreadedWebServer
 			}
 			finally
 			{
-                Server.StopWebServer(listener);
+				await Server.StopWebServerAsync(listener);
             }
         }
     }
