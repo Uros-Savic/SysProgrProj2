@@ -1,5 +1,5 @@
 # SysProgrProj2
-Drugi projekat iz predmeta Sistemsko programiranja
+Drugi projekat iz predmeta Sistemsko programiranje
 
 TASK ASYNC version
 
