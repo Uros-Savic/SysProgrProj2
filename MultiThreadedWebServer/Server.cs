@@ -39,6 +39,10 @@ namespace MultiThreadedWebServer
             if (request.Url != null)
             {
                 string requestUrl = request.Url.LocalPath;
+                if(request.Url.AbsolutePath == "/favicon.ico")
+				{
+                    return;
+				}
                 Console.WriteLine($"Request received: {requestUrl}");
                 string filePath = Path.Combine(RootFolder, requestUrl.TrimStart('/'));
 
